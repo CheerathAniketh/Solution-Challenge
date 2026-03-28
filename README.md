@@ -19,20 +19,22 @@ before it causes harm. No data science degree required.
 ## How It Works
 1. Upload your CSV dataset
 2. Select your target column and sensitive attribute
-3. EquiLens analyzes bias using SPD, DI, and EOD metrics
-4. SHAP explains which features are causing the bias
-5. Gemini translates everything into plain language
-6. What-if panel shows impact of removing biased features
+3. Optionally select a second sensitive attribute for intersectional analysis
+4. EquiLens analyzes bias using SPD, DI, and EOD metrics
+5. SHAP explains which features are causing the bias
+6. Gemini translates everything into plain language
+7. Intersectionality page reveals compounded disadvantage across identity combinations
 
 ## Real User Story
 Priya runs an NGO in Pune distributing scholarships.
 She uploads her dataset, selects gender as the sensitive
-attribute, and discovers rural girls are approved at 34%
-the rate of urban boys — a Disparate Impact of 0.34, far
-below the legal threshold of 0.8. Gemini explains this in
-plain language and suggests fixes. Priya downloads the
-audit report and shares it with her board. All in under
-5 minutes.
+attribute and caste as the intersect attribute. She
+discovers that lower-caste girls are approved at 8% —
+far below the 34% rate for upper-caste boys. A Disparate
+Impact of 0.24, well below the legal threshold of 0.8.
+Gemini explains this in plain language and suggests fixes.
+Priya downloads the audit report and shares it with her
+board. All in under 5 minutes.
 
 ## Tech Stack
 - Backend: FastAPI (Python)
@@ -80,17 +82,28 @@ reaches production.
 - [x] Graceful fallback explanation when Gemini quota is exhausted or API key is invalid
 - [x] Fallback explanation is dynamic — based on actual CSV data, not hardcoded
 - [x] Fallback responses marked with `*` so developers know Gemini is not responding
-- [x] Smart label decoding: encoded columns (0/1) mapped to human-readable names (Male/Female etc.)
+- [x] Smart label decoding: encoded columns (0/1/2...) mapped to human-readable names
 - [x] String target column support (e.g. "yes"/"no", "hired"/"rejected")
 - [x] Frontend served via FastAPI static files mount (no CORS issues)
+- [x] Real intersectionality computation via `compute_intersectionality()` in `analyzer.py`
+- [x] Cross-group approval rates computed for every (col1 × col2) subgroup combination
+- [x] Cells with fewer than 10 samples excluded and marked null to avoid misleading statistics
+- [x] Correct integer→label decoding for multi-value encoded columns (race: 0–4)
+- [x] Optional `sensitive_col_2` parameter on `/analyze` endpoint
 
 ### Frontend
 - [x] Single-page app with sidebar navigation
 - [x] Overview page: score cards (DI, SPD, severity), approval rate chart, group comparison table
 - [x] Fairness metrics page: metric bars, calibration curve, ROC by group
+- [x] Calibration and ROC curves labeled with real group names (Female/Male, not 0/1)
 - [x] Explainability page: SHAP feature importance bars with proxy variable detection
-- [x] Intersectionality page: gender × race heatmap, most disadvantaged subgroups table
-- [x] Remediation page: before/after radar charts, recommended steps
+- [x] Intersectionality page: real sex × race heatmap from backend data
+- [x] Intersectionality subgroup table: all cross-group combinations ranked worst → best
+- [x] Intersectionality insight: AI text identifying most/least disadvantaged subgroup with count
+- [x] Graceful fallback to single-attribute view when second column not selected
+- [x] "Intersect with" dropdown auto-populated from CSV headers
+- [x] Auto-detects race/ethnicity/caste as second sensitive attribute
+- [x] Remediation page: before/after radar charts, recommended steps from backend
 - [x] Audit report page: structured report with key findings and copy-to-clipboard
 - [x] Domain switcher: Hiring / Credit / Healthcare demo presets
 - [x] Auto-detect target and sensitive columns from uploaded CSV headers
@@ -105,15 +118,14 @@ reaches production.
 ### Backend
 - [ ] `/whatif` endpoint — simulate bias impact of dropping specific features
 - [ ] Equalized Odds computed properly (currently estimated from SPD)
-- [ ] Multi-class sensitive attribute support (more than 2 groups)
 - [ ] PDF export of audit report
 - [ ] Authentication / API key management for multi-user deployments
 - [ ] Rate limiting and input validation on file uploads
 
 ### Frontend
 - [ ] What-if simulator page (UI exists, backend endpoint pending)
-- [ ] Real intersectionality data from backend (currently uses hardcoded demo data)
 - [ ] Audience toggle re-fetches explanation from backend (currently only works for uploaded CSVs)
+- [ ] Intersectionality: show sample size tooltip on null/sparse cells
 - [ ] Mobile responsive layout (sidebar hidden on small screens but content not fully optimized)
 - [ ] Loading skeletons instead of spinner during analysis
 - [ ] Error messages shown inline instead of `alert()` popups
@@ -127,7 +139,6 @@ reaches production.
 ---
 
 ## Setup
-
 ```bash
 git clone https://github.com/CheerathAniketh/EquiLens-AI
 cd EquiLens-AI/backend
