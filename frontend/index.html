@@ -214,6 +214,10 @@ body::before { content: ''; position: fixed; inset: 0; background-image: linear-
     <select class="sel" id="targetSel"><option value="">Select column</option></select>
     <span class="upload-label">Sensitive:</span>
     <select class="sel" id="sensitiveSel"><option value="">Select column</option></select>
+    <span class="upload-label">Intersect with:</span>
+    <select class="sel" id="sensitiveSel2">
+    <option value="">(optional)</option>
+    </select>
     <button class="run-btn" id="runBtn" onclick="runAnalysis()">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="4,2 14,8 4,14"/></svg>
       Analyze
@@ -474,16 +478,27 @@ async function detectColumns(file) {
   const cols = firstLine.split(',').map(c => c.trim().replace(/"/g, ''));
   const targetSel = document.getElementById('targetSel');
   const sensitiveSel = document.getElementById('sensitiveSel');
+
   targetSel.innerHTML = '<option value="">Select column</option>';
   sensitiveSel.innerHTML = '<option value="">Select column</option>';
   cols.forEach(col => {
     targetSel.add(new Option(col, col));
     sensitiveSel.add(new Option(col, col));
   });
+
   const targetGuess = cols.find(c => ['hired','approved','outcome','label','target','decision','income'].includes(c.toLowerCase()));
   const sensitiveGuess = cols.find(c => ['gender','race','age','sex','ethnicity','caste'].includes(c.toLowerCase()));
   if (targetGuess) targetSel.value = targetGuess;
   if (sensitiveGuess) sensitiveSel.value = sensitiveGuess;
+
+  // ← sensitiveSel2 AFTER sensitiveGuess is defined
+  const sensitiveSel2 = document.getElementById('sensitiveSel2');
+  sensitiveSel2.innerHTML = '<option value="">(optional)</option>';
+  cols.forEach(col => sensitiveSel2.add(new Option(col, col)));
+  const sensitiveGuess2 = cols.find(c =>
+    ['race','ethnicity','caste'].includes(c.toLowerCase()) && c !== sensitiveGuess
+  );
+  if (sensitiveGuess2) sensitiveSel2.value = sensitiveGuess2;
 }
 
 // ── RUN ANALYSIS ──
@@ -507,7 +522,8 @@ async function runAnalysis() {
   try {
     const formData = new FormData();
     formData.append('file', state.file);
-    const res = await fetch(`${API_BASE}/analyze?target_col=${targetCol}&sensitive_col=${sensitiveCol}&audience=${state.audience}`, {
+    const sensitiveCol2 = document.getElementById('sensitiveSel2').value;
+    const res = await fetch(`${API_BASE}/analyze?target_col=${targetCol}&sensitive_col=${sensitiveCol}&sensitive_col_2=${sensitiveCol2}&audience=${state.audience}`, {
       method: 'POST', body: formData
     });
     if (!res.ok) throw new Error('Analysis failed');
@@ -515,6 +531,7 @@ async function runAnalysis() {
     state.analysisResult = data;
     state.targetCol = targetCol;
     state.sensitiveCol = sensitiveCol;
+    state.sensitiveCol2 = sensitiveCol2;
     renderAll();
     showResults();
   } catch (err) {
@@ -540,7 +557,7 @@ function renderAll() {
   renderMetrics(d.stats);
   renderCalibROC(d.curves, d.stats);
   renderSHAP(d.shap);
-  renderIntersect(d.stats);
+  renderIntersect(d.stats, d.intersectionality || null);
   renderRemediation(d);
   renderReport(d.stats);
 }
@@ -677,7 +694,13 @@ function renderCalibROC(curves, stats) {
 
   // Map encoded keys "0","1" back to real group names from stats
   const groupNames = stats ? Object.keys(stats.group_stats) : [];
-function labelFor(key) { return key; }
+function labelFor(key) {
+  if (!stats) return key;
+  const groupNames = Object.keys(stats.group_stats);
+  const idx = parseInt(key);
+  if (!isNaN(idx) && groupNames[idx] !== undefined) return groupNames[idx];
+  return key;
+}
 
   if (curves && curves.calibration && Object.keys(curves.calibration).length > 0) {
     const keys = Object.keys(curves.calibration);
@@ -768,59 +791,132 @@ function renderSHAP(shap) {
   document.getElementById('shapAI').classList.remove('pending');
 }
 
-// ── INTERSECTIONALITY — computed from real group stats ──
-function renderIntersect(stats) {
-  const groups = Object.keys(stats.group_stats);
+// ── INTERSECTIONALITY — real 2-attribute matrix or single fallback ──
+function renderIntersect(stats, intersectionality) {
 
-  // If only one sensitive attribute (e.g. just Male/Female), show single-group heatmap
-  // Otherwise show what we have
   function cellBg(v) {
-    if (v >= 0.7) return 'rgba(64,217,139,0.25)';
-    if (v >= 0.6) return 'rgba(64,217,139,0.15)';
-    if (v >= 0.5) return 'rgba(255,179,71,0.2)';
-    if (v >= 0.4) return 'rgba(255,77,109,0.2)';
+    if (v === null) return 'rgba(255,255,255,0.03)';
+    if (v >= 0.7)   return 'rgba(64,217,139,0.25)';
+    if (v >= 0.6)   return 'rgba(64,217,139,0.15)';
+    if (v >= 0.5)   return 'rgba(255,179,71,0.2)';
+    if (v >= 0.4)   return 'rgba(255,77,109,0.2)';
     return 'rgba(255,77,109,0.35)';
   }
   function cellColor(v) {
-    if (v >= 0.6) return 'var(--success)';
-    if (v >= 0.5) return 'var(--warn)';
+    if (v === null) return 'var(--muted)';
+    if (v >= 0.6)   return 'var(--success)';
+    if (v >= 0.5)   return 'var(--warn)';
     return 'var(--danger)';
   }
 
-  // Build heatmap from actual group stats
-  const hdr = `<div class="hmap-header">${groups.map(g => `<div class="hmap-col-lbl">${g}</div>`).join('')}</div>`;
-  const singleRow = `<div class="hmap-row">
-    <div class="hmap-lbl">Approval</div>
-    ${groups.map(g => {
-      const v = stats.group_stats[g].positive_rate;
-      return `<div class="hmap-cell" style="background:${cellBg(v)};color:${cellColor(v)}">${(v*100).toFixed(0)}%</div>`;
-    }).join('')}
-  </div>`;
+  // ── TRUE INTERSECTIONALITY: 2 sensitive columns ──
+  if (intersectionality && intersectionality.matrix) {
+    const { col1, col2, col1_values, col2_values, matrix, groups } = intersectionality;
 
-  document.getElementById('heatmapWrap').innerHTML = hdr + singleRow;
-  document.getElementById('intersectBadge').textContent = groups.join(' × ');
+    document.getElementById('intersectBadge').textContent = `${col1} × ${col2}`;
 
-  // Subgroup table — rank groups by approval rate
-  const sorted = [...groups].sort((a, b) => stats.group_stats[a].positive_rate - stats.group_stats[b].positive_rate);
-  const maxRate = stats.group_stats[sorted[sorted.length - 1]].positive_rate;
-  document.getElementById('subgroupTable').innerHTML = `
-    <thead><tr><th>Group</th><th>Approval rate</th><th>vs privileged</th><th>Risk</th></tr></thead>
-    <tbody>${sorted.map(g => {
-      const rate = stats.group_stats[g].positive_rate;
-      const diff = ((rate - maxRate) * 100).toFixed(1);
-      const risk = rate < 0.4 ? ['tag-red', 'High'] : rate < 0.6 ? ['tag-amber', 'Medium'] : ['tag-green', 'Low'];
-      return `<tr>
-        <td style="font-weight:600">${g}</td>
-        <td style="font-family:var(--mono)">${(rate*100).toFixed(1)}%</td>
-        <td style="font-family:var(--mono);color:${diff < 0 ? 'var(--danger)' : 'var(--success)'}">${diff}pp</td>
-        <td><span class="tag ${risk[0]}">${risk[1]}</span></td>
-      </tr>`;
-    }).join('')}</tbody>`;
+    // Heatmap: rows = col1 (e.g. sex), columns = col2 (e.g. race)
+    const hdr = `<div class="hmap-header">
+      <div class="hmap-col-lbl" style="min-width:100px;flex:0"></div>
+      ${col2_values.map(c => `<div class="hmap-col-lbl">${c}</div>`).join('')}
+    </div>`;
 
-  const least = sorted[0];
-  const most = sorted[sorted.length - 1];
-  const gap = ((stats.group_stats[most].positive_rate - stats.group_stats[least].positive_rate) * 100).toFixed(1);
-  document.getElementById('intersectAI').textContent = `Group analysis shows ${most} has the highest approval rate at ${(stats.group_stats[most].positive_rate*100).toFixed(1)}%, while ${least} has the lowest at ${(stats.group_stats[least].positive_rate*100).toFixed(1)}% — a gap of ${gap} percentage points. This ${gap > 20 ? 'large' : 'moderate'} disparity indicates ${gap > 20 ? 'significant' : 'moderate'} systemic disadvantage for the ${least} group.`;
+    const rows = col1_values.map(r => `
+      <div class="hmap-row">
+        <div class="hmap-lbl">${r}</div>
+        ${col2_values.map(c => {
+          const v = (matrix[r] && matrix[r][c] !== undefined) ? matrix[r][c] : null;
+          const display = v !== null ? `${(v * 100).toFixed(0)}%` : '—';
+          return `<div class="hmap-cell" style="background:${cellBg(v)};color:${cellColor(v)}">${display}</div>`;
+        }).join('')}
+      </div>`).join('');
+
+    document.getElementById('heatmapWrap').innerHTML = hdr + rows;
+
+    // Subgroup table — all valid cross-groups ranked worst → best
+    const valid = Object.entries(groups)
+      .filter(([, v]) => v.positive_rate !== null)
+      .sort(([, a], [, b]) => a.positive_rate - b.positive_rate);
+
+    const maxRate = valid.length > 0 ? valid[valid.length - 1][1].positive_rate : 1;
+
+    document.getElementById('subgroupTable').innerHTML = `
+      <thead><tr>
+        <th>Subgroup</th><th>Count</th>
+        <th>Approval rate</th><th>vs privileged</th><th>Risk</th>
+      </tr></thead>
+      <tbody>${valid.map(([name, v]) => {
+        const diff = ((v.positive_rate - maxRate) * 100).toFixed(1);
+        const risk = v.positive_rate < 0.3
+          ? ['tag-red', 'High']
+          : v.positive_rate < 0.6
+          ? ['tag-amber', 'Medium']
+          : ['tag-green', 'Low'];
+        return `<tr>
+          <td style="font-weight:600">${name}</td>
+          <td style="font-family:var(--mono);color:var(--muted)">${v.count.toLocaleString()}</td>
+          <td style="font-family:var(--mono)">${(v.positive_rate * 100).toFixed(1)}%</td>
+          <td style="font-family:var(--mono);color:${diff < 0 ? 'var(--danger)' : 'var(--success)'}">${diff}pp</td>
+          <td><span class="tag ${risk[0]}">${risk[1]}</span></td>
+        </tr>`;
+      }).join('')}</tbody>`;
+
+    // AI insight
+    if (valid.length > 0) {
+      const worst = valid[0];
+      const best  = valid[valid.length - 1];
+      const gap   = ((best[1].positive_rate - worst[1].positive_rate) * 100).toFixed(1);
+      document.getElementById('intersectAI').textContent =
+        `Intersectional analysis across ${col1} × ${col2} reveals ${valid.length} subgroups. ` +
+        `Most disadvantaged: "${worst[0]}" at ${(worst[1].positive_rate * 100).toFixed(1)}% approval (n=${worst[1].count.toLocaleString()}). ` +
+        `Most privileged: "${best[0]}" at ${(best[1].positive_rate * 100).toFixed(1)}%. ` +
+        `A gap of ${gap} percentage points — intersecting identities compound disadvantage beyond what single-attribute analysis reveals.`;
+    }
+
+  } else {
+    // ── FALLBACK: only one sensitive column selected ──
+    const groups = Object.keys(stats.group_stats);
+    document.getElementById('intersectBadge').textContent = groups.join(' × ');
+
+    const hdr = `<div class="hmap-header">
+      ${groups.map(g => `<div class="hmap-col-lbl">${g}</div>`).join('')}
+    </div>`;
+    const singleRow = `<div class="hmap-row">
+      <div class="hmap-lbl">Approval</div>
+      ${groups.map(g => {
+        const v = stats.group_stats[g].positive_rate;
+        return `<div class="hmap-cell" style="background:${cellBg(v)};color:${cellColor(v)}">${(v*100).toFixed(0)}%</div>`;
+      }).join('')}
+    </div>`;
+    document.getElementById('heatmapWrap').innerHTML = hdr + singleRow;
+
+    const sorted = [...groups].sort((a, b) =>
+      stats.group_stats[a].positive_rate - stats.group_stats[b].positive_rate);
+    const maxRate = stats.group_stats[sorted[sorted.length - 1]].positive_rate;
+
+    document.getElementById('subgroupTable').innerHTML = `
+      <thead><tr><th>Group</th><th>Approval rate</th><th>vs privileged</th><th>Risk</th></tr></thead>
+      <tbody>${sorted.map(g => {
+        const rate = stats.group_stats[g].positive_rate;
+        const diff = ((rate - maxRate) * 100).toFixed(1);
+        const risk = rate < 0.4 ? ['tag-red', 'High'] : rate < 0.6 ? ['tag-amber', 'Medium'] : ['tag-green', 'Low'];
+        return `<tr>
+          <td style="font-weight:600">${g}</td>
+          <td style="font-family:var(--mono)">${(rate*100).toFixed(1)}%</td>
+          <td style="font-family:var(--mono);color:${diff < 0 ? 'var(--danger)' : 'var(--success)'}">${diff}pp</td>
+          <td><span class="tag ${risk[0]}">${risk[1]}</span></td>
+        </tr>`;
+      }).join('')}</tbody>`;
+
+    const least = sorted[0];
+    const most  = sorted[sorted.length - 1];
+    const gap   = ((stats.group_stats[most].positive_rate - stats.group_stats[least].positive_rate) * 100).toFixed(1);
+    document.getElementById('intersectAI').textContent =
+      `Single-attribute analysis: ${most} has the highest approval rate at ${(stats.group_stats[most].positive_rate*100).toFixed(1)}%, ` +
+      `while ${least} has the lowest at ${(stats.group_stats[least].positive_rate*100).toFixed(1)}% — a gap of ${gap}pp. ` +
+      `Select a second sensitive attribute (e.g. race) to reveal compounded intersectional disadvantage.`;
+  }
+
   document.getElementById('intersectAI').classList.remove('pending');
 }
 
