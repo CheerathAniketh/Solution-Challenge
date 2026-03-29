@@ -18,7 +18,15 @@ def prepare_features(df, target_col, sensitive_col):
     X = df_encoded.drop(columns=[target_col])
     y = df_encoded[target_col]
     return X, y
-
+def safe_float(x):
+    """Convert to float, replacing nan/inf with None."""
+    try:
+        v = float(x)
+        if np.isnan(v) or np.isinf(v):
+            return None
+        return round(v, 3)
+    except:
+        return None
 
 def get_roc_data(y_true, y_prob, sensitive_values, sensitive_test):
     """Compute ROC curves per group."""
@@ -28,13 +36,15 @@ def get_roc_data(y_true, y_prob, sensitive_values, sensitive_test):
         mask = sensitive_test == group
         if mask.sum() < 10:
             continue
+        if y_true[mask].sum() == 0:  # no positive samples in this group
+            continue
         fpr, tpr, _ = roc_curve(y_true[mask], y_prob[mask])
         roc_auc = round(auc(fpr, tpr), 3)
         # downsample to 20 points for frontend
         idx = np.linspace(0, len(fpr) - 1, min(20, len(fpr)), dtype=int)
         roc_data[str(group)] = {
-            "fpr": [round(float(x), 3) for x in fpr[idx]],
-            "tpr": [round(float(x), 3) for x in tpr[idx]],
+            "fpr": [safe_float(x) for x in fpr[idx]],
+            "tpr": [safe_float(x) for x in tpr[idx]],
             "auc": roc_auc
         }
     return roc_data
@@ -52,8 +62,8 @@ def get_calibration_data(y_true, y_prob, sensitive_values, sensitive_test):
             y_true[mask], y_prob[mask], n_bins=10, strategy='uniform'
         )
         calib_data[str(group)] = {
-            "mean_predicted": [round(float(x), 3) for x in mean_predicted],
-            "fraction_positive": [round(float(x), 3) for x in fraction_of_positives],
+            "mean_predicted": [safe_float(x) for x in mean_predicted],
+            "fraction_positive": [safe_float(x) for x in fraction_of_positives],
         }
     return calib_data
 
@@ -86,5 +96,7 @@ def train_and_evaluate(df, target_col, sensitive_col):
         y_test_reset = y_test.reset_index(drop=True)
         curves["roc"] = get_roc_data(y_test_reset, y_prob, sensitive_test.unique(), sensitive_test)
         curves["calibration"] = get_calibration_data(y_test_reset, y_prob, sensitive_test.unique(), sensitive_test)
+    y_pred = model.predict(X_test_model)
+    sensitive_test_series = sensitive_original.iloc[y_test.index].reset_index(drop=True) if sensitive_original is not None else None
+    return model, X_train_model, X_test_model, y_test, curves, y_pred, y_prob, sensitive_test_series
 
-    return model, X_train_model, X_test_model, y_test, curves

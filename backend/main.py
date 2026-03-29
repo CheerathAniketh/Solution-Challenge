@@ -2,8 +2,8 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import pandas as pd
-
-from analyzer import analyze_bias, compute_intersectionality
+# Update import at top
+from analyzer import analyze_bias, compute_intersectionality, compute_eod
 from trainer import train_and_evaluate
 from explainer import get_shap_values
 from gemini_client import explain_results, suggest_fixes
@@ -27,10 +27,16 @@ async def analyze(
     audience: str = "ngo",
 ):
     df = pd.read_csv(file.file)
-
     stats = analyze_bias(df, target_col, sensitive_col)
-    model, X_train, X_test, y_test, curves = train_and_evaluate(df, target_col, sensitive_col)
+    model, X_train, X_test, y_test, curves, y_pred, y_prob, sensitive_test = train_and_evaluate(
+        df, target_col, sensitive_col
+    )
     shap_data = get_shap_values(model, X_train, X_test)
+
+    # Real EOD computation
+    eod_data = compute_eod(y_test, y_pred, sensitive_test)
+    stats["eod"] = eod_data["eod"]
+    stats["eod_details"] = eod_data
 
     intersectionality = None
     if sensitive_col_2 and sensitive_col_2 != sensitive_col and sensitive_col_2 in df.columns:
@@ -58,7 +64,6 @@ async def analyze(
         "curves": curves,
         "intersectionality": intersectionality,
     }
-
 
 # Mount LAST — after all API routes
 app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")

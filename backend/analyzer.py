@@ -142,3 +142,52 @@ def compute_intersectionality(df, target_col, sensitive_col, sensitive_col_2):
         "matrix": matrix,
         "valid_count": len(valid),
     }
+
+def compute_eod(y_test, y_pred, sensitive_test):
+    """
+    True Equalized Odds Difference:
+    Max difference in TPR and FPR across all group pairs.
+    Returns EOD score + per-group breakdown.
+    """
+    y_test = pd.Series(y_test).reset_index(drop=True)
+    y_pred = pd.Series(y_pred).reset_index(drop=True)
+    sensitive_test = pd.Series(sensitive_test).reset_index(drop=True)
+
+    groups = sensitive_test.unique()
+    group_metrics = {}
+
+    for group in groups:
+        mask = sensitive_test == group
+        if mask.sum() < 10:
+            continue
+        yt = y_test[mask]
+        yp = y_pred[mask]
+
+        tp = int(((yt == 1) & (yp == 1)).sum())
+        fn = int(((yt == 1) & (yp == 0)).sum())
+        fp = int(((yt == 0) & (yp == 1)).sum())
+        tn = int(((yt == 0) & (yp == 0)).sum())
+
+        tpr = round(tp / (tp + fn), 4) if (tp + fn) > 0 else 0.0
+        fpr = round(fp / (fp + tn), 4) if (fp + tn) > 0 else 0.0
+
+        label = decode_group_label(str(sensitive_test.name or ""), group)
+        group_metrics[label] = {"tpr": tpr, "fpr": fpr, "count": int(mask.sum())}
+
+    if len(group_metrics) < 2:
+        return {"eod": 0.0, "group_metrics": group_metrics, "bias_detected": False}
+
+    tprs = [v["tpr"] for v in group_metrics.values()]
+    fprs = [v["fpr"] for v in group_metrics.values()]
+
+    tpr_diff = round(max(tprs) - min(tprs), 4)
+    fpr_diff = round(max(fprs) - min(fprs), 4)
+    eod = round(max(tpr_diff, fpr_diff), 4)  # stricter of the two
+
+    return {
+        "eod": eod,
+        "tpr_diff": tpr_diff,
+        "fpr_diff": fpr_diff,
+        "group_metrics": group_metrics,
+        "bias_detected": bool(eod > 0.1)
+    }

@@ -670,7 +670,7 @@ function renderMetrics(stats) {
   const defs = [
     { name: 'Disparate Impact ratio', val: di, good: v => v >= 0.8, fmt: v => v.toFixed(3), max: 1, color: di >= 0.8 ? 'var(--success)' : di >= 0.6 ? 'var(--warn)' : 'var(--danger)' },
     { name: 'Statistical Parity Difference', val: spd, good: v => v <= 0.1, fmt: v => (v*100).toFixed(1)+'%', max: 0.5, color: spd <= 0.1 ? 'var(--success)' : spd <= 0.2 ? 'var(--warn)' : 'var(--danger)' },
-    { name: 'Equalized Odds gap (est.)', val: spd * 0.85, good: v => v <= 0.1, fmt: v => (v*100).toFixed(1)+'%', max: 0.5, color: (spd*0.85) <= 0.1 ? 'var(--success)' : (spd*0.85) <= 0.2 ? 'var(--warn)' : 'var(--danger)' },
+    { name: 'Equalized Odds gap', val: stats.eod ?? spd * 0.85, good: v => v <= 0.1, fmt: v => (v*100).toFixed(1)+'%', max: 0.5, color: (stats.eod ?? spd*0.85) <= 0.1 ? 'var(--success)' : (stats.eod ?? spd*0.85) <= 0.2 ? 'var(--warn)' : 'var(--danger)' },
     { name: 'Calibration score (est.)', val: Math.max(0.5, 1 - spd * 0.4), good: v => v >= 0.85, fmt: v => (v*100).toFixed(0)+'%', max: 1, color: (1-spd*0.4) >= 0.85 ? 'var(--success)' : 'var(--warn)' },
   ];
   const fail = defs.filter(d => !d.good(d.val)).length;
