@@ -4,6 +4,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import pandas as pd
 from typing import List
+from fastapi.responses import Response
+from pdf_exporter import generate_audit_pdf
 
 from analyzer import analyze_bias, compute_intersectionality, compute_eod
 from trainer import train_and_evaluate
@@ -236,6 +238,15 @@ def _fallback_whatif_explanation(original, modified, delta, dropped):
         f"{threshold_note} "
         f"Equalized Odds {eod_dir} from {original['eod']:.3f} to {modified['eod']:.3f}.\n\n"
         f"{outcome} *"
+    )
+
+@app.post("/export-pdf")
+async def export_pdf(payload: dict):
+    pdf_bytes = generate_audit_pdf(payload)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=equilens_audit.pdf"},
     )
 
 

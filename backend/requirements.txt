@@ -9,3 +9,4 @@ pydantic
 python-dotenv
 joblib
 numpy
+reportlab

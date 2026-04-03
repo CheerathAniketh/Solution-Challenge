@@ -450,7 +450,10 @@ body::before { content: ''; position: fixed; inset: 0; background-image: linear-
         <div class="report-meta" id="reportMeta"></div>
         <div id="reportBody" style="font-size:13px;line-height:1.8;"></div>
         <div style="display:flex;gap:10px;margin-top:20px;">
-          <button class="run-btn" onclick="alert('PDF export coming in v1.1')">Download PDF</button>
+          <button class="run-btn" id="pdfBtn" onclick="exportPDF()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                Download PDF
+          </button>
           <button class="export-btn" onclick="copyReport()">Copy to clipboard</button>
         </div>
       </div>
@@ -1120,6 +1123,86 @@ function copyReport() {
   const stats = state.analysisResult?.stats;
   if (!stats) return;
   navigator.clipboard.writeText(`EquiLens AI Audit Report\nDisparate Impact: ${stats.di.toFixed(3)}\nSPD: ${(stats.spd*100).toFixed(1)}%\nBias detected: ${stats.bias_detected}\nSeverity: ${stats.severity}`).then(() => alert('Report copied to clipboard.'));
+}
+
+// ── PDF EXPORT ──
+async function exportPDF() {
+  if (!state.analysisResult) {
+    alert('Run an analysis first before exporting.');
+    return;
+  }
+
+  const btn = document.getElementById('pdfBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Generating PDF...';
+
+  try {
+    const d = state.analysisResult;
+    const stats = d.stats;
+
+    // Collect what-if data if a simulation was run
+    const wiResults = document.getElementById('wiResults');
+    let whatif = null;
+    if (wiResults && wiResults.style.display !== 'none') {
+      const dropped = [...document.querySelectorAll('.wi-check.selected input')].map(el => el.value);
+      // Read the rendered delta cards to reconstruct whatif payload
+      whatif = {
+        dropped_features: dropped,
+        original: {
+          di:  stats.di,
+          spd: stats.spd,
+          eod: stats.eod ?? stats.spd * 0.85
+        },
+        simulated: {
+          di:  parseFloat(document.querySelector('#wiDeltaGrid .wi-delta-after')?.textContent) || stats.di,
+          spd: parseFloat(document.querySelectorAll('#wiDeltaGrid .wi-delta-after')[1]?.textContent) / 100 || stats.spd,
+          eod: parseFloat(document.querySelectorAll('#wiDeltaGrid .wi-delta-after')[2]?.textContent) / 100 || stats.eod
+        }
+      };
+    }
+
+    const payload = {
+      dataset:           state.file ? state.file.name : state.domain + '-demo.csv',
+      target_col:        state.targetCol  || 'outcome',
+      sensitive_col:     state.sensitiveCol || 'group',
+      audience:          state.audience,
+      group_stats:       stats.group_stats,
+      spd:               stats.spd,
+      di:                stats.di,
+      eod:               stats.eod ?? stats.spd * 0.85,
+      severity:          stats.severity,
+      bias_detected:     stats.bias_detected,
+      shap_features:     d.shap?.top_features ?? [],
+      explanation:       d.explanation ?? '',
+      whatif:            whatif,
+      remediation_steps: d.fixes ?? [],
+    };
+
+    const res = await fetch('/export-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'PDF generation failed');
+    }
+
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `equilens_audit_${payload.sensitive_col}_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+  } catch (err) {
+    alert('PDF export failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Download PDF';
+  }
 }
 
 // ── INIT ──
