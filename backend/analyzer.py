@@ -63,6 +63,18 @@ def get_severity(spd, di):
 
 
 def analyze_bias(df, target_col, sensitive_col):
+    df = df.copy()
+
+    # Encode string target column to binary numeric
+    if pd.api.types.is_string_dtype(df[target_col]) or df[target_col].dtype == object:
+        unique_vals = df[target_col].dropna().unique()
+        positive_labels = {"yes", "hired", "approved", "true", "1", "accept", "accepted", "grant", "granted"}
+        pos_label = next(
+            (v for v in unique_vals if str(v).strip().lower() in positive_labels),
+            unique_vals[0]  # fallback: treat first unique value as positive
+        )
+        df[target_col] = (df[target_col].str.strip().str.lower() == str(pos_label).strip().lower()).astype(int)
+
     group_stats = get_group_stats(df, target_col, sensitive_col)
     spd = calculate_spd(group_stats)
     di = calculate_di(group_stats)
@@ -82,8 +94,6 @@ def analyze_bias(df, target_col, sensitive_col):
         "bias_detected": bool(spd > 0.1 or di < 0.8),
         "severity": get_severity(spd, di)
     }
-
-# ADD THIS to the bottom of analyzer.py
 
 def compute_intersectionality(df, target_col, sensitive_col, sensitive_col_2):
     """
