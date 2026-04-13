@@ -24,6 +24,8 @@ before it causes harm. No data science degree required.
 5. SHAP explains which features are causing the bias
 6. Gemini translates everything into plain language
 7. Intersectionality page reveals compounded disadvantage across identity combinations
+8. What-if simulator lets you drop features and see the bias impact in real time
+9. Download a full PDF audit report
 
 ## Real User Story
 Priya runs an NGO in Pune distributing scholarships.
@@ -37,17 +39,18 @@ Priya downloads the audit report and shares it with her
 board. All in under 5 minutes.
 
 ## Tech Stack
-- Backend: FastAPI (Python)
-- Bias Metrics: SPD, Disparate Impact, Equalized Odds
-- Explainability: SHAP
-- AI Layer: Gemini API (explanation + audience toggle)
-- Frontend: Single-page HTML/CSS/JS with Chart.js
-- Deployment: Google Cloud Run
+- **Backend:** FastAPI (Python)
+- **Bias Metrics:** SPD, Disparate Impact, Equalized Odds
+- **Explainability:** SHAP (TreeExplainer)
+- **AI Layer:** Gemini 2.5 Flash (explanation + audience toggle + what-if analysis)
+- **Frontend:** Single-page HTML/CSS/JS with Chart.js
+- **PDF Export:** ReportLab
+- **Deployment:** Render
 
 ## Fairness Metrics
 | Metric | Threshold | Meaning |
 |--------|-----------|---------|
-| Disparate Impact | < 0.8 = biased | Legal standard (EEOC) |
+| Disparate Impact | < 0.8 = biased | Legal standard (EEOC 4/5ths rule) |
 | Statistical Parity Difference | > 0.1 = biased | Outcome gap between groups |
 | Equalized Odds | > 0.1 = biased | Error rate gap between groups |
 
@@ -56,9 +59,9 @@ Every existing tool — IBM AI Fairness 360, Fairlearn,
 Aequitas — outputs p-values and confusion matrices that
 only data scientists can interpret. EquiLens translates
 those results into plain language tuned to who's reading:
-- Student → learning-oriented explanation
-- NGO worker → policy implication
-- Policy maker → legal risk framing
+- **Student** → learning-oriented explanation
+- **NGO worker** → policy implication
+- **Policy maker** → legal risk framing
 
 ## SDG Alignment
 EquiLens directly addresses UN Sustainable Development
@@ -76,14 +79,14 @@ reaches production.
 - [x] CSV upload and parsing via `/analyze` endpoint
 - [x] Bias metrics computed locally: SPD, Disparate Impact, Equalized Odds (real TPR/FPR per group)
 - [x] SHAP feature importance via `explainer.py`
-- [x] Model training and evaluation via `trainer.py`
-- [x] Gemini API integration for plain-language explanations (`gemini_client.py`)
+- [x] Model training and evaluation via `trainer.py` (RandomForest, ROC + calibration curves)
+- [x] Gemini 2.5 Flash integration for plain-language explanations (`gemini_client.py`)
 - [x] Audience toggle: NGO worker / Student / Policy maker
 - [x] Graceful fallback explanation when Gemini quota is exhausted or API key is invalid
 - [x] Fallback explanation is dynamic — based on actual CSV data, not hardcoded
 - [x] Fallback responses marked with `*` so developers know Gemini is not responding
 - [x] Smart label decoding: encoded columns (0/1/2...) mapped to human-readable names
-- [x] String target column support (e.g. "yes"/"no", "hired"/"rejected")
+- [x] String target column support (e.g. "yes"/"no", "hired"/"rejected", ">50K"/"<=50K")
 - [x] Frontend served via FastAPI static files mount (no CORS issues)
 - [x] Real intersectionality computation via `compute_intersectionality()` in `analyzer.py`
 - [x] Cross-group approval rates computed for every (col1 × col2) subgroup combination
@@ -91,6 +94,13 @@ reaches production.
 - [x] Correct integer→label decoding for multi-value encoded columns (race: 0–4)
 - [x] Optional `sensitive_col_2` parameter on `/analyze` endpoint
 - [x] Real Equalized Odds via `compute_eod()` — true TPR/FPR difference across groups
+- [x] `/whatif` endpoint — retrain model on reduced feature set and measure bias delta
+- [x] `/whatif/features` endpoint — returns available features from cached session
+- [x] In-memory session cache — dataset cached after `/analyze` so `/whatif` doesn't require re-upload
+- [x] What-if delta computed correctly: SPD/DI from model predictions, EOD from true labels
+- [x] Gemini explains what-if results in plain language (`explain_whatif` in `gemini_client.py`)
+- [x] PDF audit report generation via ReportLab (`pdf_exporter.py`)
+- [x] PDF includes: verdict banner, metric scorecards, group approval table, SHAP bars, Gemini explanation, regulation compliance table
 
 ### Frontend
 - [x] Single-page app with sidebar navigation
@@ -106,35 +116,27 @@ reaches production.
 - [x] Auto-detects race/ethnicity/caste as second sensitive attribute
 - [x] Remediation page: before/after radar charts, recommended steps from backend
 - [x] Audit report page: structured report with key findings and copy-to-clipboard
+- [x] PDF download from audit report page
 - [x] Domain switcher: Hiring / Credit / Healthcare demo presets
 - [x] Auto-detect target and sensitive columns from uploaded CSV headers
 - [x] Drag-and-drop CSV upload with column auto-population in dropdowns
 - [x] Gemini audience toggle (NGO / Student / Policy maker)
 - [x] Regulation compliance pills (EEOC, EU AI Act, GDPR)
+- [x] What-if simulator: feature checkboxes, before/after radar charts, delta cards, Gemini explanation
 
 ---
 
 ## 🚧 What's Pending
 
-### Backend
-- [ ] `/whatif` endpoint — simulate bias impact of dropping specific features
-- [ ] PDF export of audit report
-- [ ] Authentication / API key management for multi-user deployments
-- [ ] Rate limiting and input validation on file uploads
-
 ### Frontend
-- [ ] What-if simulator page (UI exists, backend endpoint pending)
-- [ ] Audience toggle re-fetches explanation from backend (currently only works for uploaded CSVs)
-- [ ] Intersectionality: show sample size tooltip on null/sparse cells
-- [ ] Mobile responsive layout (sidebar hidden on small screens but content not fully optimized)
-- [ ] Loading skeletons instead of spinner during analysis
-- [ ] Error messages shown inline instead of `alert()` popups
+- [ ] Audience toggle re-fetches explanation from backend without re-uploading CSV
+- [ ] Intersectionality: sample size tooltip on null/sparse cells
+- [ ] Mobile responsive layout
+- [ ] Loading skeletons instead of spinner
+- [ ] Inline error messages instead of `alert()` popups
 
 ### Deployment
-- [ ] Docker image finalized and tested
-- [ ] Google Cloud Run deployment
 - [ ] Environment variable management for production (`.env` → Cloud Secrets)
-- [ ] Live demo URL
 
 ---
 
@@ -159,5 +161,3 @@ Then open `http://127.0.0.1:8000` in your browser.
 
 ## License
 MIT
-
-
