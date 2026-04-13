@@ -46,7 +46,6 @@ async def analyze(
 ):
     df = pd.read_csv(file.file)
 
-    # Cache the raw dataframe and column selections for /whatif
     session_cache["df"] = df
     session_cache["target_col"] = target_col
     session_cache["sensitive_col"] = sensitive_col
@@ -63,6 +62,7 @@ async def analyze(
 
     intersectionality = None
     if sensitive_col_2 and sensitive_col_2 != sensitive_col and sensitive_col_2 in df.columns:
+        
         intersectionality = compute_intersectionality(df, target_col, sensitive_col, sensitive_col_2)
 
     try:
@@ -87,8 +87,6 @@ async def analyze(
         "curves": curves,
         "intersectionality": intersectionality,
     }
-
-
 # ─── /whatif/features ─────────────────────────────────────────────────────────
 # Defined BEFORE /whatif POST to avoid FastAPI route shadowing.
 
