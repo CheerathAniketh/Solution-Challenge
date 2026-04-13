@@ -249,4 +249,6 @@ async def export_pdf(payload: dict):
 
 
 # ─── Static frontend — mount LAST, after all API routes ───────────────────────
-app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
+import os
+frontend_dir = "../frontend" if os.path.exists("../frontend") else "./frontend"
+app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
