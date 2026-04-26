@@ -171,36 +171,22 @@ def explain_whatif(original, modified, delta, dropped_features, audience="ngo"):
 
     di_threshold_crossed = original["di"] < 0.8 and modified["di"] >= 0.8
 
-    prompt = f"""
-You are an AI fairness expert explaining a what-if simulation to {persona}.
+    prompt = f"""Be extremely concise. 3 sentences max.
 
-The user removed these features from their dataset: {dropped_str}
+Features dropped: {dropped_str}
+Audience: {persona}
 
-Before removing:
-- Disparate Impact: {original['di']} (below 0.8 = discriminatory)
-- Statistical Parity Difference: {original['spd']}
-- Equalized Odds: {original['eod']}
-- Severity: {original['severity']}
+Before → After:
+- Disparate Impact: {original['di']:.3f} → {modified['di']:.3f} (need ≥ 0.8)
+- SPD: {original['spd']:.3f} → {modified['spd']:.3f} (need ≤ 0.1)
+- Equalized Odds: {original['eod']:.3f} → {modified['eod']:.3f} (need ≤ 0.1)
+- Threshold crossed: {di_threshold_crossed}
 
-After removing:
-- Disparate Impact: {modified['di']}
-- Statistical Parity Difference: {modified['spd']}
-- Equalized Odds: {modified['eod']}
-- Severity: {modified['severity']}
+Sentence 1: What improved and what got worse, using the actual numbers.
+Sentence 2: Is the model fair now? Yes or no, with the DI number.
+Sentence 3: One specific next step.
 
-Changes: {{'improved': {improved}, 'worsened': {worsened}}}
-Legal threshold crossed (DI now above 0.8): {di_threshold_crossed}
-
-Write exactly 2 short paragraphs:
-1. What changed after removing these features, and whether it helped reduce bias
-2. Whether the model is now fair enough, and what to do next
-
-Rules:
-- No technical jargon
-- Plain simple language only
-- No bullet points inside paragraphs
-- Each paragraph under 4 sentences
-- Be honest if removing the features made things worse
+Hard limit: under 50 words total. No filler, no intros.
 """
 
     try:
